@@ -139,6 +139,136 @@
     outline: 3px solid white;
     outline-offset: 3px;
   }
+
+  button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .tutorial-panel {
+    left: 18px;
+    bottom: 78px;
+    width: min(360px, calc(100vw - 36px));
+    max-height: min(58vh, 520px);
+    padding: 18px 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow: auto;
+    pointer-events: auto;
+  }
+
+  .tutorial-panel[hidden] {
+    display: none;
+  }
+
+  .tutorial-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  #tutorial-step {
+    color: #92a2bb;
+    font-size: 12px;
+  }
+
+  .tutorial-panel h2 {
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .tutorial-body {
+    margin: 0;
+    color: #c5d0e0;
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+  }
+
+  .tutorial-sliders {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .tutorial-slider {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: #aebbd0;
+  }
+
+  .tutorial-slider input[type="range"] {
+    width: 100%;
+    accent-color: #90e6ca;
+  }
+
+  .tutorial-slider strong {
+    color: #e8edf9;
+    font-weight: 650;
+  }
+
+  .tutorial-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .tutorial-preset {
+    padding: 8px 12px;
+    background: #2a3648;
+    color: #e8edf9;
+    font-weight: 600;
+  }
+
+  .tutorial-preset:hover {
+    background: #3a4a60;
+  }
+
+  .tutorial-challenge {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #2a3140;
+    color: #f0c36a;
+    font-size: 12px;
+  }
+
+  .tutorial-challenge.ok {
+    color: #90e6ca;
+  }
+
+  .tutorial-gait {
+    margin: 0;
+  }
+
+  .tutorial-phase {
+    margin: 0;
+    color: #aebbd0;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tutorial-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  .tutorial-notes {
+    color: #90e6ca;
+    font-size: 13px;
+    text-decoration: none;
+  }
+
+  .tutorial-notes:hover {
+    text-decoration: underline;
+  }
   
   #status {
     position: fixed;
@@ -214,5 +344,12 @@
       gap: 10px;
       padding: 10px;
       font-size: 11px;
+    }
+
+    .tutorial-panel {
+      left: 10px;
+      bottom: 64px;
+      max-height: 48vh;
+      padding: 14px;
     }
   }

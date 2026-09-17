@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { initTutorial } from "./tutorial/tutorial.js";
 import "./style.css";
 
 start().catch((error) => {
@@ -10,7 +11,7 @@ start().catch((error) => {
 });
 
 /**
- * Boot the explorer: studio scene, official CAD GLBs, and the part inspector.
+ * Boot the explorer: studio scene, official CAD GLBs, inspector, and tutorial.
  */
 async function start() {
   const viewport = document.querySelector("#viewport");
@@ -86,6 +87,10 @@ async function start() {
   scene.add(grid);
 
   const pickable = [];
+  /** @type {THREE.Mesh[]} */
+  let tutorialHighlights = [];
+  /** @type {Array<() => void>} */
+  const frameHooks = [];
 
   function group(parent, position = [0, 0, 0]) {
     const result = new THREE.Group();
@@ -247,7 +252,7 @@ async function start() {
    * Cache a named assembly and its rest rotation for FK playback.
    * @param {THREE.Object3D} root
    * @param {string} name
-   * @param {"x"|"y"|"z"} axis URDF joints are local Z; kept after Y-up export.
+   * @param {"x"|"y"|"z"} axis
    */
   function bindJoint(root, name, axis = "z") {
     const node = findNode(root, [name]);
@@ -267,7 +272,7 @@ async function start() {
    * @param {{node: THREE.Object3D, axis: string, rest: THREE.Euler}|null} joint
    * @param {number} angle
    */
-  function setJoint(joint, angle) {
+  function applyJoint(joint, angle) {
     if (!joint) return;
     joint.node.rotation.copy(joint.rest);
     joint.node.rotation[joint.axis] += angle;
@@ -312,7 +317,6 @@ async function start() {
   duck.add(duckModel);
   placeOnPedestal(duck, 0.85);
 
-  // Microduck — official kinematics body names (Pollen Robotics)
   const duckJoints = {
     leftHipYaw: bindJoint(duckModel, "yaw2roll"),
     leftHipRoll: bindJoint(duckModel, "hip_l"),
@@ -330,13 +334,15 @@ async function start() {
     beak: bindJoint(duckModel, "jaw_soft")
   };
 
-  // Reachy Mini — body_down is yaw_body; antennas keep Stewart closed
   const reachyJoints = {
     bodyYaw: bindJoint(reachyModel, "body_down_3dprint"),
     head: bindJoint(reachyModel, "xl_330"),
     rightAntenna: bindJoint(reachyModel, "dc15_a01_horn_dummy_7"),
     leftAntenna: bindJoint(reachyModel, "dc15_a01_horn_dummy_8")
   };
+
+  /** @type {Record<string, ReturnType<typeof bindJoint>>} */
+  const jointRegistry = { ...duckJoints, ...reachyJoints };
 
   const duckHome = {
     x: duck.position.x,
@@ -345,14 +351,19 @@ async function start() {
     yaw: duck.rotation.y
   };
 
+  let motionPlaying = true;
+  let tutorialMode = false;
+  let gaitDemo = false;
+  let gaitPhase = 0;
+
   /**
    * Kinematic walk cycle for Microduck.
-   * ponytail: not the RL policy — swap for recorded joint CSV if gait looks fake.
    * @param {number} time
    */
   function updateDuckWalk(time) {
     const cadence = 3.2;
     const phaseL = time * cadence;
+    gaitPhase = phaseL;
     const phaseR = phaseL + Math.PI;
 
     const hipA = 0.38;
@@ -375,59 +386,100 @@ async function start() {
     const left = leg(phaseL, 1);
     const right = leg(phaseR, -1);
 
-    setJoint(duckJoints.leftHipYaw, 0);
-    setJoint(duckJoints.leftHipRoll, left.hipRoll);
-    setJoint(duckJoints.leftHipPitch, left.hipPitch);
-    setJoint(duckJoints.leftKnee, left.knee);
-    setJoint(duckJoints.leftAnkle, left.ankle);
+    applyJoint(duckJoints.leftHipYaw, 0);
+    applyJoint(duckJoints.leftHipRoll, left.hipRoll);
+    applyJoint(duckJoints.leftHipPitch, left.hipPitch);
+    applyJoint(duckJoints.leftKnee, left.knee);
+    applyJoint(duckJoints.leftAnkle, left.ankle);
 
-    setJoint(duckJoints.rightHipYaw, 0);
-    setJoint(duckJoints.rightHipRoll, -right.hipRoll);
-    setJoint(duckJoints.rightHipPitch, right.hipPitch);
-    setJoint(duckJoints.rightKnee, right.knee);
-    setJoint(duckJoints.rightAnkle, right.ankle);
+    applyJoint(duckJoints.rightHipYaw, 0);
+    applyJoint(duckJoints.rightHipRoll, -right.hipRoll);
+    applyJoint(duckJoints.rightHipPitch, right.hipPitch);
+    applyJoint(duckJoints.rightKnee, right.knee);
+    applyJoint(duckJoints.rightAnkle, right.ankle);
 
-    setJoint(duckJoints.neck, Math.sin(time * 0.55) * 0.12);
-    setJoint(duckJoints.neckPitch, Math.sin(time * 0.7 + 0.3) * 0.15);
-    setJoint(duckJoints.head, Math.sin(time * 0.9 + 0.4) * 0.2);
-    setJoint(duckJoints.beak, 0.15 + Math.sin(time * 1.6) * 0.12);
+    applyJoint(duckJoints.neck, Math.sin(time * 0.55) * 0.12);
+    applyJoint(duckJoints.neckPitch, Math.sin(time * 0.7 + 0.3) * 0.15);
+    applyJoint(duckJoints.head, Math.sin(time * 0.9 + 0.4) * 0.2);
+    applyJoint(duckJoints.beak, 0.15 + Math.sin(time * 1.6) * 0.12);
 
-    const orbit = time * 0.22;
-    const radius = 0.18;
-    duck.position.x = duckHome.x + Math.cos(orbit) * radius;
-    duck.position.z = duckHome.z + Math.sin(orbit) * radius;
-    duck.position.y = duckHome.y + Math.abs(Math.sin(phaseL * 2)) * 0.025;
-    duck.rotation.y = duckHome.yaw - orbit + Math.PI / 2;
+    if (!gaitDemo) {
+      const orbit = time * 0.22;
+      const radius = 0.18;
+      duck.position.x = duckHome.x + Math.cos(orbit) * radius;
+      duck.position.z = duckHome.z + Math.sin(orbit) * radius;
+      duck.position.y = duckHome.y + Math.abs(Math.sin(phaseL * 2)) * 0.025;
+      duck.rotation.y = duckHome.yaw - orbit + Math.PI / 2;
+    } else {
+      duck.position.x = duckHome.x;
+      duck.position.z = duckHome.z;
+      duck.position.y = duckHome.y + Math.abs(Math.sin(phaseL * 2)) * 0.025;
+      duck.rotation.y = duckHome.yaw;
+    }
   }
 
   /**
    * Reachy Mini expression without Stewart CCD.
-   * ponytail: tiny xl_330 look only; add CCD when real head pose is required.
    * @param {number} time
    */
   function updateReachyIdle(time) {
-    setJoint(reachyJoints.bodyYaw, Math.sin(time * 0.45) * 0.35);
-    setJoint(reachyJoints.head, Math.sin(time * 0.65 + 0.5) * 0.1);
+    applyJoint(reachyJoints.bodyYaw, Math.sin(time * 0.45) * 0.35);
+    applyJoint(reachyJoints.head, Math.sin(time * 0.65 + 0.5) * 0.1);
     if (reachyJoints.head) {
       reachyJoints.head.node.rotation.x =
         reachyJoints.head.rest.x + Math.sin(time * 0.8) * 0.06;
     }
-    setJoint(reachyJoints.leftAntenna, Math.sin(time * 1.8) * 0.55);
-    setJoint(reachyJoints.rightAntenna, Math.sin(time * 1.8 + 1.1) * 0.55);
+    applyJoint(reachyJoints.leftAntenna, Math.sin(time * 1.8) * 0.55);
+    applyJoint(reachyJoints.rightAntenna, Math.sin(time * 1.8 + 1.1) * 0.55);
   }
 
-  /**
-   * Reset animated nodes to their rest poses and home positions.
-   */
   function resetMotion() {
-    for (const joint of Object.values(duckJoints)) {
-      if (joint) joint.node.rotation.copy(joint.rest);
-    }
-    for (const joint of Object.values(reachyJoints)) {
+    for (const joint of Object.values(jointRegistry)) {
       if (joint) joint.node.rotation.copy(joint.rest);
     }
     duck.position.set(duckHome.x, duckHome.y, duckHome.z);
     duck.rotation.y = duckHome.yaw;
+  }
+
+  function materialsOf(mesh) {
+    return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  }
+
+  function clearHighlight() {
+    for (const mesh of tutorialHighlights) {
+      for (const material of materialsOf(mesh)) {
+        if (material.emissive) {
+          material.emissive.setHex(0x000000);
+          material.emissiveIntensity = 0;
+        }
+      }
+    }
+    tutorialHighlights = [];
+  }
+
+  /**
+   * Highlight meshes whose name contains any of the needles.
+   * @param {string[]} needles
+   */
+  function highlightByName(needles) {
+    clearHighlight();
+    const lower = needles.map((n) => n.toLowerCase());
+    for (const mesh of pickable) {
+      const hay = `${mesh.name} ${namedAncestor(mesh)}`.toLowerCase();
+      if (!lower.some((n) => hay.includes(n))) continue;
+      tutorialHighlights.push(mesh);
+      for (const material of materialsOf(mesh)) {
+        if (material.emissive) {
+          material.emissive.set("#f0b429");
+          material.emissiveIntensity = 0.45;
+        }
+      }
+    }
+  }
+
+  function syncPlayButton() {
+    playButton.textContent = motionPlaying ? "Pause" : "Play";
+    playButton.setAttribute("aria-pressed", String(motionPlaying));
   }
 
   const fields = {
@@ -441,16 +493,11 @@ async function start() {
   const pointer = new THREE.Vector2();
   let pointerActive = false;
   let selected = null;
-  let motionPlaying = true;
-
-  function materialsOf(mesh) {
-    return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-  }
 
   function select(mesh) {
     if (mesh === selected) return;
 
-    if (selected) {
+    if (selected && !tutorialHighlights.includes(selected)) {
       for (const material of materialsOf(selected)) {
         if (material.emissive) {
           material.emissive.setHex(0x000000);
@@ -470,10 +517,12 @@ async function start() {
       return;
     }
 
-    for (const material of materialsOf(mesh)) {
-      if (material.emissive) {
-        material.emissive.set("#3d8f73");
-        material.emissiveIntensity = 0.28;
+    if (!tutorialHighlights.includes(mesh)) {
+      for (const material of materialsOf(mesh)) {
+        if (material.emissive) {
+          material.emissive.set("#3d8f73");
+          material.emissiveIntensity = 0.28;
+        }
       }
     }
 
@@ -516,25 +565,116 @@ async function start() {
     controls.update();
   }
 
+  /**
+   * Frame the camera on one robot or both.
+   * @param {"reachy"|"microduck"|"both"} which
+   */
+  function focusRobot(which) {
+    let target;
+    let halfWidth = 1.7;
+    let halfHeight = 1.15;
+
+    if (which === "reachy") {
+      target = new THREE.Vector3(reachy.position.x, 0.75, 0);
+      halfWidth = 0.7;
+      halfHeight = 1.0;
+    } else if (which === "microduck") {
+      target = new THREE.Vector3(duck.position.x, 0.55, 0);
+      halfWidth = 0.7;
+      halfHeight = 0.9;
+    } else {
+      target = new THREE.Vector3(0, 0.72, 0);
+    }
+
+    const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+    const distance =
+      Math.max(
+        halfHeight / Math.tan(verticalFov / 2),
+        halfWidth / (Math.tan(verticalFov / 2) * camera.aspect)
+      ) * 1.25;
+
+    const direction = new THREE.Vector3(0.22, 0.28, 1).normalize();
+    camera.position.copy(target).addScaledVector(direction, distance);
+    controls.target.copy(target);
+    controls.update();
+  }
+
   function resize() {
     const width = viewport.clientWidth;
     const height = viewport.clientHeight;
     renderer.setSize(width, height);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    resetView();
+    if (!tutorialMode) resetView();
   }
 
   window.addEventListener("resize", resize);
-  document.querySelector("#reset").addEventListener("click", resetView);
+  document.querySelector("#reset").addEventListener("click", () => {
+    if (tutorialMode) focusRobot("both");
+    else resetView();
+  });
 
   const playButton = document.querySelector("#play-pause");
   playButton.addEventListener("click", () => {
+    if (tutorialMode && !gaitDemo) return;
     motionPlaying = !motionPlaying;
-    playButton.textContent = motionPlaying ? "Pause" : "Play";
-    playButton.setAttribute("aria-pressed", String(motionPlaying));
+    syncPlayButton();
     if (!motionPlaying) resetMotion();
   });
+
+  /** Thin API for the tutorial panel. */
+  const robotApi = {
+    setJoint(id, radians) {
+      applyJoint(jointRegistry[id] ?? null, radians);
+    },
+    getJointDegrees(id) {
+      const joint = jointRegistry[id];
+      if (!joint) return 0;
+      const delta = joint.node.rotation[joint.axis] - joint.rest[joint.axis];
+      return (delta * 180) / Math.PI;
+    },
+    resetPose() {
+      resetMotion();
+    },
+    focusRobot,
+    highlightByName,
+    clearHighlight,
+    pauseIdle() {
+      motionPlaying = false;
+      syncPlayButton();
+      resetMotion();
+    },
+    resumeIdle() {
+      if (tutorialMode) return;
+      motionPlaying = true;
+      syncPlayButton();
+    },
+    setTutorialMode(on) {
+      tutorialMode = on;
+      playButton.disabled = on && !gaitDemo;
+    },
+    setGaitDemo(on) {
+      gaitDemo = on;
+      playButton.disabled = tutorialMode && !on;
+      if (on) {
+        resetMotion();
+        motionPlaying = true;
+        syncPlayButton();
+      } else if (tutorialMode) {
+        motionPlaying = false;
+        syncPlayButton();
+        resetMotion();
+      }
+    },
+    getGaitPhase() {
+      return gaitPhase;
+    },
+    onFrame(fn) {
+      frameHooks.push(fn);
+    }
+  };
+
+  initTutorial(robotApi);
 
   resize();
 
@@ -543,10 +683,12 @@ async function start() {
   renderer.setAnimationLoop(() => {
     const time = clock.getElapsedTime();
 
-    if (motionPlaying) {
-      updateDuckWalk(time);
-      updateReachyIdle(time);
+    if (motionPlaying && (!tutorialMode || gaitDemo)) {
+      if (!tutorialMode || gaitDemo) updateDuckWalk(time);
+      if (!tutorialMode) updateReachyIdle(time);
     }
+
+    for (const hook of frameHooks) hook();
 
     controls.update();
     scene.updateMatrixWorld(true);

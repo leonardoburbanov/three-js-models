@@ -34,8 +34,29 @@
       <p class="hint">Hover or tap a part to inspect it.</p>
     </aside>
 
+    <aside id="tutorial" class="panel tutorial-panel" hidden>
+      <div class="tutorial-head">
+        <span class="eyebrow">LESSON</span>
+        <span id="tutorial-step">1 / 6</span>
+      </div>
+      <h2 id="tutorial-title">Lesson</h2>
+      <div id="tutorial-body" class="tutorial-body"></div>
+      <div id="tutorial-sliders" class="tutorial-sliders"></div>
+      <div id="tutorial-presets" class="tutorial-presets"></div>
+      <p id="tutorial-challenge" class="tutorial-challenge" hidden></p>
+      <div id="tutorial-gait" class="tutorial-gait" hidden>
+        <p id="tutorial-phase" class="tutorial-phase">Phase…</p>
+      </div>
+      <div class="tutorial-nav">
+        <button id="tutorial-prev" type="button">Prev</button>
+        <a id="tutorial-notes" class="tutorial-notes" href="/notes/index.md" target="_blank" rel="noopener">Learn more</a>
+        <button id="tutorial-next" type="button">Next</button>
+      </div>
+    </aside>
+
     <footer class="panel controls">
       <span>Drag to orbit · Scroll to zoom</span>
+      <button id="tutorial-toggle" type="button" aria-pressed="false">Tutorial</button>
       <button id="play-pause" type="button" aria-pressed="true">Pause</button>
       <button id="reset" type="button">Reset view</button>
     </footer>
