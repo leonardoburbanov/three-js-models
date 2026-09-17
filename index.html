@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#d4d8e0" />
+    <title>Robot Explorer</title>
+  </head>
+
+  <body>
+    <main id="viewport" aria-label="Interactive 3D robot explorer"></main>
+
+    <header class="panel title-panel">
+      <h1>Robot Explorer</h1>
+      <p>Reachy Mini + Microduck</p>
+      <span class="badge">OFFICIAL CAD MESHES</span>
+    </header>
+
+    <aside class="panel inspector">
+      <span class="eyebrow">PART INSPECTOR</span>
+      <h2 id="part-name">Hover over a robot</h2>
+
+      <dl>
+        <dt>Robot</dt>
+        <dd id="robot-name">—</dd>
+
+        <dt>Parent joint</dt>
+        <dd id="joint-name">—</dd>
+
+        <dt>Joint type</dt>
+        <dd id="joint-type">—</dd>
+      </dl>
+
+      <p class="hint">Hover or tap a part to inspect it.</p>
+    </aside>
+
+    <footer class="panel controls">
+      <span>Drag to orbit · Scroll to zoom</span>
+      <button id="play-pause" type="button" aria-pressed="true">Pause</button>
+      <button id="reset" type="button">Reset view</button>
+    </footer>
+
+    <div id="status" role="status">Loading robot models…</div>
+
+    <script>
+      // Keep errors visible even if the main module fails to import.
+      window.showRobotError = (error) => {
+        const status = document.getElementById("status");
+        status.hidden = false;
+        status.classList.add("error");
+        status.textContent =
+          "Unable to start the 3D scene: " +
+          (error?.message || String(error)) +
+          "\nCheck the browser console for details.";
+      };
+
+      window.addEventListener("error", (event) => {
+        window.showRobotError(event.error || event.message);
+      });
+
+      window.addEventListener("unhandledrejection", (event) => {
+        window.showRobotError(event.reason);
+      });
+    </script>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
