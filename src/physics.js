@@ -47,14 +47,16 @@ class RobotSim {
    * @param {THREE.Object3D} glbRoot
    * @param {THREE.Vector3} originYUp scene offset for this robot
    * @param {number} standKey keyframe index or -1
+   * @param {number} visualScale match kinematic GLB display scale
    */
-  constructor(mujoco, model, data, glbRoot, originYUp, standKey) {
+  constructor(mujoco, model, data, glbRoot, originYUp, standKey, visualScale = 1) {
     this.mujoco = mujoco;
     this.model = model;
     this.data = data;
     this.glbRoot = glbRoot;
     this.originYUp = originYUp;
     this.standKey = standKey;
+    this.visualScale = visualScale;
     /** @type {Map<number, THREE.Object3D>} */
     this.bodyNodes = new Map();
     /** @type {Map<string, number>} */
@@ -128,7 +130,7 @@ class RobotSim {
    * Copy MuJoCo body poses onto the GLB nodes (Z-up → Y-up, local to parent).
    */
   syncVisuals() {
-    const { model, data, originYUp } = this;
+    const { data, originYUp, visualScale } = this;
     // Parents must be updated bottom-up; iterate by body id (parents first).
     for (const [bid, node] of this.bodyNodes) {
       const px = data.xpos[3 * bid];
@@ -140,7 +142,8 @@ class RobotSim {
       const qy = data.xquat[4 * bid + 2];
       const qz = data.xquat[4 * bid + 3];
 
-      _pos.set(px, pz, -py).add(originYUp);
+      // Match kinematic displayScale: enlarge meter poses; GLB root also has this scale.
+      _pos.set(px, pz, -py).multiplyScalar(visualScale).add(originYUp);
       _quat.set(qx, qy, qz, qw).premultiply(Z_UP_TO_Y_UP);
       _scale.set(1, 1, 1);
       _world.compose(_pos, _quat, _scale);
@@ -154,6 +157,9 @@ class RobotSim {
       } else {
         _world.decompose(node.position, node.quaternion, node.scale);
       }
+      // Parent GLB root already carries displayScale. Decompose would bake 1/S
+      // into each link (tiny meshes + huge joint gaps). Keep link scale at 1.
+      node.scale.set(1, 1, 1);
     }
   }
 
@@ -181,12 +187,14 @@ export class PhysicsWorld {
 
   /**
    * Load WASM + baked XML models once.
-   * @param {{ reachyRoot: THREE.Object3D, duckRoot: THREE.Object3D, reachyOrigin: THREE.Vector3, duckOrigin: THREE.Vector3 }} roots
+   * @param {{ reachyRoot: THREE.Object3D, duckRoot: THREE.Object3D, reachyOrigin: THREE.Vector3, duckOrigin: THREE.Vector3, visualScale?: number }} roots
    */
   async init(roots) {
     this.mujoco = await loadMujoco({
       locateFile: (path) => (path.endsWith(".wasm") ? wasmUrl : path)
     });
+
+    const visualScale = roots.visualScale ?? 1;
 
     const [reachyXml, duckXml] = await Promise.all([
       fetch("/physics/reachy_mini.xml").then((r) => r.text()),
@@ -201,7 +209,8 @@ export class PhysicsWorld {
       reachyData,
       roots.reachyRoot,
       roots.reachyOrigin.clone(),
-      -1
+      -1,
+      visualScale
     );
 
     const duckModel = this.mujoco.MjModel.from_xml_string(duckXml);
@@ -217,7 +226,8 @@ export class PhysicsWorld {
       duckData,
       roots.duckRoot,
       roots.duckOrigin.clone(),
-      standKey
+      standKey,
+      visualScale
     );
   }
 

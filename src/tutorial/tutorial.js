@@ -1,4 +1,5 @@
 import { LESSONS } from "./lessons.js";
+import { t, tx, onLangChange, lang } from "../i18n.js";
 
 /**
  * Mount the interactive tutorial panel and wire it to the robot API.
@@ -32,7 +33,7 @@ export function initTutorial(api) {
     active = on;
     panel.hidden = !on;
     toggle.setAttribute("aria-pressed", String(on));
-    toggle.textContent = on ? "Close tutorial" : "Tutorial";
+    toggle.textContent = on ? t("closeTutorial") : t("tutorial");
 
     if (on) {
       api.setTutorialMode(true);
@@ -53,11 +54,13 @@ export function initTutorial(api) {
    */
   function renderLesson() {
     const lesson = LESSONS[index];
-    titleEl.textContent = lesson.title;
-    bodyEl.textContent = lesson.body;
+    titleEl.textContent = tx(lesson.title);
+    bodyEl.textContent = tx(lesson.body);
     notesLink.href = lesson.notesPath;
     stepLabel.textContent = `${index + 1} / ${LESSONS.length}`;
     prevBtn.disabled = index === 0;
+    prevBtn.textContent = t("prev");
+    notesLink.textContent = t("learnMore");
 
     api.resetPose();
     api.clearHighlight();
@@ -82,7 +85,8 @@ export function initTutorial(api) {
       caption.className = "tutorial-slider-label";
       const valueEl = document.createElement("strong");
       valueEl.textContent = "0°";
-      caption.append(slider.label, " ", valueEl);
+      const label = tx(slider.label);
+      caption.append(label, " ", valueEl);
 
       const input = document.createElement("input");
       input.type = "range";
@@ -90,7 +94,7 @@ export function initTutorial(api) {
       input.max = String(slider.max);
       input.step = String(slider.step ?? 1);
       input.value = "0";
-      input.setAttribute("aria-label", slider.label);
+      input.setAttribute("aria-label", label);
 
       input.addEventListener("input", () => {
         const deg = Number(input.value);
@@ -112,7 +116,7 @@ export function initTutorial(api) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "tutorial-preset";
-      btn.textContent = preset.label;
+      btn.textContent = tx(preset.label);
       btn.addEventListener("click", () => {
         for (const [id, deg] of Object.entries(preset.joints)) {
           api.setJoint(id, (deg * Math.PI) / 180);
@@ -145,7 +149,7 @@ export function initTutorial(api) {
     if (!lesson.challenge) {
       challengeEl.hidden = true;
       nextBtn.disabled = isLast;
-      nextBtn.textContent = isLast ? "Done" : "Next";
+      nextBtn.textContent = isLast ? t("done") : t("next");
       return;
     }
 
@@ -154,11 +158,11 @@ export function initTutorial(api) {
     const deg = api.getJointDegrees(jointId);
     const ok = Math.abs(deg - targetDeg) <= toleranceDeg;
     challengeEl.textContent = ok
-      ? `Challenge complete (${deg.toFixed(0)}°).`
-      : `${hint} — now ${deg.toFixed(0)}°`;
+      ? `${t("challengeOk")} (${deg.toFixed(0)}°).`
+      : `${tx(hint)} — ${deg.toFixed(0)}°`;
     challengeEl.classList.toggle("ok", ok);
     nextBtn.disabled = isLast || !ok;
-    nextBtn.textContent = isLast ? "Done" : "Next";
+    nextBtn.textContent = isLast ? t("done") : t("next");
   }
 
   toggle.addEventListener("click", () => setActive(!active));
@@ -177,11 +181,19 @@ export function initTutorial(api) {
     }
   });
 
+  onLangChange(() => {
+    toggle.textContent = active ? t("closeTutorial") : t("tutorial");
+    if (active) renderLesson();
+  });
+
   // Gait phase readout while demo runs
   const phaseEl = document.querySelector("#tutorial-phase");
   api.onFrame(() => {
     if (!active || !LESSONS[index].showGait || !phaseEl) return;
     const phase = api.getGaitPhase();
-    phaseEl.textContent = `Left phase ωt = ${phase.toFixed(2)} rad  ·  Right = ${(phase + Math.PI).toFixed(2)}`;
+    phaseEl.textContent =
+      lang === "es"
+        ? `Fase izq. ωt = ${phase.toFixed(2)} rad  ·  Der. = ${(phase + Math.PI).toFixed(2)}`
+        : `Left phase ωt = ${phase.toFixed(2)} rad  ·  Right = ${(phase + Math.PI).toFixed(2)}`;
   });
 }

@@ -4,7 +4,11 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { initTutorial } from "./tutorial/tutorial.js";
 import { PhysicsWorld } from "./physics.js";
+import { applyDom, onLangChange, t, toggleLang } from "./i18n.js";
 import "./style.css";
+
+applyDom();
+document.querySelector("#lang-toggle")?.addEventListener("click", () => toggleLang());
 
 start().catch((error) => {
   console.error(error);
@@ -402,18 +406,19 @@ async function start() {
       duckRoot: duckModel,
       // MuJoCo models are authored at the origin; offset matches pedestals.
       reachyOrigin: new THREE.Vector3(-0.85, 0, 0),
-      duckOrigin: new THREE.Vector3(0.85, 0, 0)
+      duckOrigin: new THREE.Vector3(0.85, 0, 0),
+      visualScale: displayScale
     });
   } catch (err) {
     console.warn("MuJoCo physics unavailable:", err);
     if (physicsBtn) {
       physicsBtn.disabled = true;
-      physicsBtn.title = "MuJoCo WASM failed to load";
+      physicsBtn.title = t("physics") + " (MuJoCo WASM failed)";
     }
   }
 
   /**
-   * Switch between kinematic display scale and 1:1 MuJoCo meters.
+   * Toggle MuJoCo physics; keep the same displayScale as kinematic mode.
    * @param {boolean} on
    */
   function setPhysicsMode(on) {
@@ -422,13 +427,14 @@ async function start() {
     const btn = document.querySelector("#physics-toggle");
     if (btn) {
       btn.setAttribute("aria-pressed", String(on));
-      btn.textContent = on ? "Physics on" : "Physics";
+      btn.textContent = on ? t("physicsOn") : t("physics");
     }
 
     if (on) {
       restoreRestPoses();
-      reachyModel.scale.setScalar(1);
-      duckModel.scale.setScalar(1);
+      // Keep displayScale on GLB roots; pose sync scales MuJoCo meters to match.
+      reachyModel.scale.setScalar(displayScale);
+      duckModel.scale.setScalar(displayScale);
       // Parent groups stay at pedestal X; Y/Z zeroed — body sync owns height.
       reachy.position.set(kinematicHome.reachy.x, 0, 0);
       duck.position.set(kinematicHome.duck.x, 0, 0);
@@ -587,7 +593,7 @@ async function start() {
   }
 
   function syncPlayButton() {
-    playButton.textContent = motionPlaying ? "Pause" : "Play";
+    playButton.textContent = motionPlaying ? t("pause") : t("play");
     playButton.setAttribute("aria-pressed", String(motionPlaying));
   }
 
@@ -619,7 +625,7 @@ async function start() {
     renderer.domElement.style.cursor = mesh ? "pointer" : "grab";
 
     if (!mesh) {
-      fields.name.textContent = "Hover over a robot";
+      fields.name.textContent = t("hoverPrompt");
       fields.robot.textContent = "—";
       fields.joint.textContent = "—";
       fields.type.textContent = "—";
@@ -795,6 +801,27 @@ async function start() {
   };
 
   initTutorial(robotApi);
+
+  onLangChange(() => {
+    syncPlayButton();
+    const pBtn = document.querySelector("#physics-toggle");
+    if (pBtn && !pBtn.disabled) {
+      pBtn.textContent = physicsMode ? t("physicsOn") : t("physics");
+    }
+    const tutBtn = document.querySelector("#tutorial-toggle");
+    // tutorial.js also updates this when active; cover idle state here
+    if (tutBtn && tutBtn.getAttribute("aria-pressed") !== "true") {
+      tutBtn.textContent = t("tutorial");
+    }
+    if (!selected) {
+      fields.name.textContent = t("hoverPrompt");
+    }
+  });
+
+  // Initial chrome labels (not data-i18n — state-dependent).
+  document.querySelector("#tutorial-toggle").textContent = t("tutorial");
+  document.querySelector("#physics-toggle").textContent = t("physics");
+  syncPlayButton();
 
   resize();
 
