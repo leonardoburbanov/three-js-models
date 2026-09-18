@@ -3,6 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { initTutorial } from "./tutorial/tutorial.js";
+import { PhysicsWorld } from "./physics.js";
 import "./style.css";
 
 start().catch((error) => {
@@ -300,9 +301,9 @@ async function start() {
   const duckModel = duckGltf.scene;
 
   const duckSize = new THREE.Box3().setFromObject(duckModel).getSize(new THREE.Vector3());
-  const scale = 1.35 / Math.max(duckSize.y, 0.01);
-  reachyModel.scale.setScalar(scale);
-  duckModel.scale.setScalar(scale);
+  const displayScale = 1.35 / Math.max(duckSize.y, 0.01);
+  reachyModel.scale.setScalar(displayScale);
+  duckModel.scale.setScalar(displayScale);
 
   prepareRobot(reachyModel, "Reachy Mini");
   prepareRobot(duckModel, "Microduck");
@@ -316,6 +317,20 @@ async function start() {
   const duck = group(scene, [0, 0, 0]);
   duck.add(duckModel);
   placeOnPedestal(duck, 0.85);
+
+  const kinematicHome = {
+    reachy: {
+      x: reachy.position.x,
+      y: reachy.position.y,
+      z: reachy.position.z
+    },
+    duck: {
+      x: duck.position.x,
+      y: duck.position.y,
+      z: duck.position.z,
+      yaw: duck.rotation.y
+    }
+  };
 
   const duckJoints = {
     leftHipYaw: bindJoint(duckModel, "yaw2roll"),
@@ -345,19 +360,104 @@ async function start() {
   const jointRegistry = { ...duckJoints, ...reachyJoints };
 
   const duckHome = {
-    x: duck.position.x,
-    y: duck.position.y,
-    z: duck.position.z,
-    yaw: duck.rotation.y
+    x: kinematicHome.duck.x,
+    y: kinematicHome.duck.y,
+    z: kinematicHome.duck.z,
+    yaw: kinematicHome.duck.yaw
   };
 
   let motionPlaying = true;
   let tutorialMode = false;
   let gaitDemo = false;
   let gaitPhase = 0;
+  let physicsMode = false;
+
+  /** @type {Map<THREE.Object3D, {pos: THREE.Vector3, quat: THREE.Quaternion, scale: THREE.Vector3}>} */
+  const glbRestPose = new Map();
+  function captureRestPoses(root) {
+    root.traverse((obj) => {
+      glbRestPose.set(obj, {
+        pos: obj.position.clone(),
+        quat: obj.quaternion.clone(),
+        scale: obj.scale.clone()
+      });
+    });
+  }
+  captureRestPoses(reachyModel);
+  captureRestPoses(duckModel);
+
+  function restoreRestPoses() {
+    for (const [obj, rest] of glbRestPose) {
+      obj.position.copy(rest.pos);
+      obj.quaternion.copy(rest.quat);
+      obj.scale.copy(rest.scale);
+    }
+  }
+
+  const physics = new PhysicsWorld();
+  const physicsBtn = document.querySelector("#physics-toggle");
+  try {
+    await physics.init({
+      reachyRoot: reachyModel,
+      duckRoot: duckModel,
+      // MuJoCo models are authored at the origin; offset matches pedestals.
+      reachyOrigin: new THREE.Vector3(-0.85, 0, 0),
+      duckOrigin: new THREE.Vector3(0.85, 0, 0)
+    });
+  } catch (err) {
+    console.warn("MuJoCo physics unavailable:", err);
+    if (physicsBtn) {
+      physicsBtn.disabled = true;
+      physicsBtn.title = "MuJoCo WASM failed to load";
+    }
+  }
 
   /**
-   * Kinematic walk cycle for Microduck.
+   * Switch between kinematic display scale and 1:1 MuJoCo meters.
+   * @param {boolean} on
+   */
+  function setPhysicsMode(on) {
+    if (!physics.mujoco) return;
+    physicsMode = on;
+    const btn = document.querySelector("#physics-toggle");
+    if (btn) {
+      btn.setAttribute("aria-pressed", String(on));
+      btn.textContent = on ? "Physics on" : "Physics";
+    }
+
+    if (on) {
+      restoreRestPoses();
+      reachyModel.scale.setScalar(1);
+      duckModel.scale.setScalar(1);
+      // Parent groups stay at pedestal X; Y/Z zeroed — body sync owns height.
+      reachy.position.set(kinematicHome.reachy.x, 0, 0);
+      duck.position.set(kinematicHome.duck.x, 0, 0);
+      duck.rotation.y = 0;
+      motionPlaying = true;
+      syncPlayButton();
+      physics.enable();
+    } else {
+      physics.disable();
+      restoreRestPoses();
+      reachyModel.scale.setScalar(displayScale);
+      duckModel.scale.setScalar(displayScale);
+      reachy.position.set(
+        kinematicHome.reachy.x,
+        kinematicHome.reachy.y,
+        kinematicHome.reachy.z
+      );
+      duck.position.set(
+        kinematicHome.duck.x,
+        kinematicHome.duck.y,
+        kinematicHome.duck.z
+      );
+      duck.rotation.y = kinematicHome.duck.yaw;
+      resetMotion();
+    }
+  }
+
+  /**
+   * Walk cycle for Microduck — kinematic joint write, or MuJoCo ctrl when physics is on.
    * @param {number} time
    */
   function updateDuckWalk(time) {
@@ -386,22 +486,31 @@ async function start() {
     const left = leg(phaseL, 1);
     const right = leg(phaseR, -1);
 
-    applyJoint(duckJoints.leftHipYaw, 0);
-    applyJoint(duckJoints.leftHipRoll, left.hipRoll);
-    applyJoint(duckJoints.leftHipPitch, left.hipPitch);
-    applyJoint(duckJoints.leftKnee, left.knee);
-    applyJoint(duckJoints.leftAnkle, left.ankle);
+    /** @param {string} id @param {number} angle */
+    function drive(id, angle) {
+      if (physicsMode) physics.setJoint(id, angle);
+      else applyJoint(jointRegistry[id] ?? null, angle);
+    }
 
-    applyJoint(duckJoints.rightHipYaw, 0);
-    applyJoint(duckJoints.rightHipRoll, -right.hipRoll);
-    applyJoint(duckJoints.rightHipPitch, right.hipPitch);
-    applyJoint(duckJoints.rightKnee, right.knee);
-    applyJoint(duckJoints.rightAnkle, right.ankle);
+    drive("leftHipYaw", 0);
+    drive("leftHipRoll", left.hipRoll);
+    drive("leftHipPitch", left.hipPitch);
+    drive("leftKnee", left.knee);
+    drive("leftAnkle", left.ankle);
 
-    applyJoint(duckJoints.neck, Math.sin(time * 0.55) * 0.12);
-    applyJoint(duckJoints.neckPitch, Math.sin(time * 0.7 + 0.3) * 0.15);
-    applyJoint(duckJoints.head, Math.sin(time * 0.9 + 0.4) * 0.2);
-    applyJoint(duckJoints.beak, 0.15 + Math.sin(time * 1.6) * 0.12);
+    drive("rightHipYaw", 0);
+    drive("rightHipRoll", -right.hipRoll);
+    drive("rightHipPitch", right.hipPitch);
+    drive("rightKnee", right.knee);
+    drive("rightAnkle", right.ankle);
+
+    drive("neck", Math.sin(time * 0.55) * 0.12);
+    drive("neckPitch", Math.sin(time * 0.7 + 0.3) * 0.15);
+    drive("head", Math.sin(time * 0.9 + 0.4) * 0.2);
+    drive("beak", 0.15 + Math.sin(time * 1.6) * 0.12);
+
+    // Freejoint owns the body pose under physics — do not orbit the group.
+    if (physicsMode) return;
 
     if (!gaitDemo) {
       const orbit = time * 0.22;
@@ -610,31 +719,42 @@ async function start() {
 
   window.addEventListener("resize", resize);
   document.querySelector("#reset").addEventListener("click", () => {
+    if (physicsMode) physics.reset();
     if (tutorialMode) focusRobot("both");
     else resetView();
   });
 
+  document.querySelector("#physics-toggle")?.addEventListener("click", () => {
+    setPhysicsMode(!physicsMode);
+  });
+
   const playButton = document.querySelector("#play-pause");
   playButton.addEventListener("click", () => {
-    if (tutorialMode && !gaitDemo) return;
+    if (tutorialMode && !gaitDemo && !physicsMode) return;
     motionPlaying = !motionPlaying;
     syncPlayButton();
-    if (!motionPlaying) resetMotion();
+    if (!motionPlaying && !physicsMode) resetMotion();
   });
 
   /** Thin API for the tutorial panel. */
   const robotApi = {
     setJoint(id, radians) {
+      if (physicsMode) {
+        physics.setJoint(id, radians);
+        return;
+      }
       applyJoint(jointRegistry[id] ?? null, radians);
     },
     getJointDegrees(id) {
+      if (physicsMode) return physics.getJointDegrees(id);
       const joint = jointRegistry[id];
       if (!joint) return 0;
       const delta = joint.node.rotation[joint.axis] - joint.rest[joint.axis];
       return (delta * 180) / Math.PI;
     },
     resetPose() {
-      resetMotion();
+      if (physicsMode) physics.reset();
+      else resetMotion();
     },
     focusRobot,
     highlightByName,
@@ -642,7 +762,7 @@ async function start() {
     pauseIdle() {
       motionPlaying = false;
       syncPlayButton();
-      resetMotion();
+      if (!physicsMode) resetMotion();
     },
     resumeIdle() {
       if (tutorialMode) return;
@@ -651,19 +771,19 @@ async function start() {
     },
     setTutorialMode(on) {
       tutorialMode = on;
-      playButton.disabled = on && !gaitDemo;
+      playButton.disabled = on && !gaitDemo && !physicsMode;
     },
     setGaitDemo(on) {
       gaitDemo = on;
-      playButton.disabled = tutorialMode && !on;
+      playButton.disabled = tutorialMode && !on && !physicsMode;
       if (on) {
-        resetMotion();
+        if (!physicsMode) resetMotion();
         motionPlaying = true;
         syncPlayButton();
       } else if (tutorialMode) {
         motionPlaying = false;
         syncPlayButton();
-        resetMotion();
+        if (!physicsMode) resetMotion();
       }
     },
     getGaitPhase() {
@@ -683,7 +803,11 @@ async function start() {
   renderer.setAnimationLoop(() => {
     const time = clock.getElapsedTime();
 
-    if (motionPlaying && (!tutorialMode || gaitDemo)) {
+    if (physicsMode) {
+      if (gaitDemo) updateDuckWalk(time);
+      if (motionPlaying) physics.tick();
+      else physics.sync();
+    } else if (motionPlaying && (!tutorialMode || gaitDemo)) {
       if (!tutorialMode || gaitDemo) updateDuckWalk(time);
       if (!tutorialMode) updateReachyIdle(time);
     }
