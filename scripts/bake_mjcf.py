@@ -338,6 +338,7 @@ def bake_microduck() -> None:
                     ):
                         body.remove(geom)
                 hx, hy, hz = sizes[bname]
+                # Taller foot boxes so contact matches visual soles (not just ankle joint).
                 ET.SubElement(
                     body,
                     "geom",
@@ -345,9 +346,55 @@ def bake_microduck() -> None:
                         "name": f"{bname}_box_col",
                         "type": "box",
                         "class": "collision",
-                        "size": f"{hx:.5f} {hy:.5f} {hz:.5f}",
-                        "pos": "0 0 -0.01",
+                        "size": f"{hx:.5f} {hy:.5f} 0.02800",
+                        "pos": "0 0 -0.02",
+                        "contype": "1",
+                        "conaffinity": "1",
+                        "condim": "3",
                         "friction": "1.2 0.5 0.01",
+                    },
+                )
+        # Trunk + head colliders so a tip does not sink through the floor.
+        for body in root.iter("body"):
+            bname = body.get("name") or ""
+            if bname == "trunk_base" and not any(
+                (g.get("name") or "").startswith("trunk_base_sphere")
+                for g in body
+                if g.tag == "geom"
+            ):
+                ET.SubElement(
+                    body,
+                    "geom",
+                    {
+                        "name": "trunk_base_sphere_col",
+                        "type": "sphere",
+                        "class": "collision",
+                        "size": "0.045",
+                        "pos": "-0.02 0 0",
+                        "contype": "1",
+                        "conaffinity": "1",
+                        "condim": "3",
+                        "friction": "1.2 0.5 0.01",
+                    },
+                )
+            if bname == "jaw_soft" and not any(
+                (g.get("name") or "").startswith("jaw_soft_sphere")
+                for g in body
+                if g.tag == "geom"
+            ):
+                ET.SubElement(
+                    body,
+                    "geom",
+                    {
+                        "name": "jaw_soft_sphere_col",
+                        "type": "sphere",
+                        "class": "collision",
+                        "size": "0.04",
+                        "pos": "0 0 -0.04",
+                        "contype": "1",
+                        "conaffinity": "1",
+                        "condim": "3",
+                        "friction": "1 0.5 0.01",
                     },
                 )
 

@@ -74,6 +74,10 @@
     padding: 22px;
     pointer-events: none;
   }
+
+  .inspector[hidden] {
+    display: none;
+  }
   
   .eyebrow {
     color: #90e6ca;

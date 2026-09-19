@@ -16,7 +16,7 @@
       <span class="badge" data-i18n="badge">OFFICIAL CAD MESHES</span>
     </header>
 
-    <aside class="panel inspector">
+    <aside id="inspector" class="panel inspector" hidden>
       <span class="eyebrow" data-i18n="inspectorEyebrow">PART INSPECTOR</span>
       <h2 id="part-name" data-i18n="hoverPrompt">Hover over a robot</h2>
 
@@ -57,6 +57,7 @@
     <footer class="panel controls">
       <span data-i18n="orbitHint">Drag to orbit · Scroll to zoom</span>
       <button id="lang-toggle" type="button" title="English / Español">ES</button>
+      <button id="inspector-toggle" type="button" aria-pressed="false">Inspector</button>
       <button id="tutorial-toggle" type="button" aria-pressed="false">Tutorial</button>
       <button id="physics-toggle" type="button" aria-pressed="false">Physics</button>
       <button id="play-pause" type="button" aria-pressed="true">Pause</button>

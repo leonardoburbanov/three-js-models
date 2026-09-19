@@ -72,6 +72,7 @@ async function start() {
   fill.position.set(-3.2, 2.4, -1.6);
   scene.add(fill);
 
+  // Visual plane at y=0 — same height as MuJoCo's contact floor (Z-up → Y-up).
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(40, 40),
     new THREE.MeshStandardMaterial({
@@ -81,12 +82,12 @@ async function start() {
     })
   );
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -0.02;
+  floor.position.y = 0;
   floor.receiveShadow = true;
   scene.add(floor);
 
   const grid = new THREE.GridHelper(8, 16, "#3a4558", "#252b38");
-  grid.position.y = -0.018;
+  grid.position.y = 0.002;
   grid.material.transparent = true;
   grid.material.opacity = 0.35;
   scene.add(grid);
@@ -102,28 +103,6 @@ async function start() {
     result.position.set(...position);
     parent.add(result);
     return result;
-  }
-
-  function pedestal(x, accent) {
-    const platform = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.38, 0.38, 0.04, 64),
-      new THREE.MeshStandardMaterial({
-        color: "#6d7582",
-        roughness: 0.7,
-        metalness: 0.08
-      })
-    );
-    platform.position.set(x, 0.0, 0);
-    platform.receiveShadow = true;
-    scene.add(platform);
-
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(0.36, 0.006, 8, 96),
-      new THREE.MeshBasicMaterial({ color: accent })
-    );
-    ring.rotation.x = Math.PI / 2;
-    ring.position.set(x, 0.022, 0);
-    scene.add(ring);
   }
 
   function prettyName(name) {
@@ -283,10 +262,11 @@ async function start() {
     joint.node.rotation[joint.axis] += angle;
   }
 
-  function placeOnPedestal(root, x) {
+  /** Place robot so its lowest point sits on the visual/MuJoCo floor (y=0). */
+  function placeOnFloor(root, x) {
     const box = new THREE.Box3().setFromObject(root);
     root.position.x = x;
-    root.position.y += 0.02 - box.min.y;
+    root.position.y += -box.min.y;
     root.position.z = 0;
   }
 
@@ -312,15 +292,13 @@ async function start() {
   prepareRobot(reachyModel, "Reachy Mini");
   prepareRobot(duckModel, "Microduck");
 
-  pedestal(-0.85, "#2f9e7b");
   const reachy = group(scene, [0, 0, 0]);
   reachy.add(reachyModel);
-  placeOnPedestal(reachy, -0.85);
+  placeOnFloor(reachy, -0.85);
 
-  pedestal(0.85, "#c2782c");
   const duck = group(scene, [0, 0, 0]);
   duck.add(duckModel);
-  placeOnPedestal(duck, 0.85);
+  placeOnFloor(duck, 0.85);
 
   const kinematicHome = {
     reachy: {
@@ -404,7 +382,7 @@ async function start() {
     await physics.init({
       reachyRoot: reachyModel,
       duckRoot: duckModel,
-      // MuJoCo models are authored at the origin; offset matches pedestals.
+      // MuJoCo models are authored at the origin; offset matches floor placement.
       reachyOrigin: new THREE.Vector3(-0.85, 0, 0),
       duckOrigin: new THREE.Vector3(0.85, 0, 0),
       visualScale: displayScale
@@ -435,7 +413,7 @@ async function start() {
       // Keep displayScale on GLB roots; pose sync scales MuJoCo meters to match.
       reachyModel.scale.setScalar(displayScale);
       duckModel.scale.setScalar(displayScale);
-      // Parent groups stay at pedestal X; Y/Z zeroed — body sync owns height.
+      // Parent groups stay at floor X; Y/Z zeroed — body sync owns height.
       reachy.position.set(kinematicHome.reachy.x, 0, 0);
       duck.position.set(kinematicHome.duck.x, 0, 0);
       duck.rotation.y = 0;
@@ -734,6 +712,17 @@ async function start() {
     setPhysicsMode(!physicsMode);
   });
 
+  const inspectorPanel = document.querySelector("#inspector");
+  document.querySelector("#inspector-toggle")?.addEventListener("click", () => {
+    const btn = document.querySelector("#inspector-toggle");
+    if (!inspectorPanel || !btn) return;
+    const on = inspectorPanel.hasAttribute("hidden");
+    inspectorPanel.hidden = !on;
+    btn.setAttribute("aria-pressed", String(on));
+    btn.textContent = on ? t("inspectorOn") : t("inspector");
+    if (!on) select(null);
+  });
+
   const playButton = document.querySelector("#play-pause");
   playButton.addEventListener("click", () => {
     if (tutorialMode && !gaitDemo && !physicsMode) return;
@@ -808,6 +797,11 @@ async function start() {
     if (pBtn && !pBtn.disabled) {
       pBtn.textContent = physicsMode ? t("physicsOn") : t("physics");
     }
+    const inspBtn = document.querySelector("#inspector-toggle");
+    if (inspBtn) {
+      const on = inspBtn.getAttribute("aria-pressed") === "true";
+      inspBtn.textContent = on ? t("inspectorOn") : t("inspector");
+    }
     const tutBtn = document.querySelector("#tutorial-toggle");
     // tutorial.js also updates this when active; cover idle state here
     if (tutBtn && tutBtn.getAttribute("aria-pressed") !== "true") {
@@ -819,6 +813,7 @@ async function start() {
   });
 
   // Initial chrome labels (not data-i18n — state-dependent).
+  document.querySelector("#inspector-toggle").textContent = t("inspector");
   document.querySelector("#tutorial-toggle").textContent = t("tutorial");
   document.querySelector("#physics-toggle").textContent = t("physics");
   syncPlayButton();
@@ -831,7 +826,9 @@ async function start() {
     const time = clock.getElapsedTime();
 
     if (physicsMode) {
-      if (gaitDemo) updateDuckWalk(time);
+      // Teaching sinusoid walk tips the biped — only drive it in gait demo.
+      // Otherwise hold STAND actuators and let gravity + foot contact run.
+      if (gaitDemo && motionPlaying) updateDuckWalk(time);
       if (motionPlaying) physics.tick();
       else physics.sync();
     } else if (motionPlaying && (!tutorialMode || gaitDemo)) {

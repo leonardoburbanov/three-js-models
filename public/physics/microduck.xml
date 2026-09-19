@@ -21,7 +21,7 @@
       <default class="visual">
         </default>
       <default class="collision">
-        <geom group="3" />
+        <geom group="3" contype="1" conaffinity="1" condim="3" />
       </default>
     </default>
     <default class="perfect_actuator">
@@ -83,11 +83,13 @@
     </asset>
 
   <worldbody>
-    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" />
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" friction="1.2 0.5 0.01" condim="3" />
     <light pos="0 0 3.5" type="directional" />
     <body name="trunk_base" childclass="microduck" pos="0 0 0.12">
       <inertial pos="-0.0226332 -2.70828e-05 0.00280064" quat="0.664866 0.238381 0.235012 0.667756" mass="0.199224" diaginertia="0.000145932 0.000140799 9.85265e-05" />
       <joint name="trunk_base_freejoint" type="free" armature="0" frictionloss="0" />
+      <!-- Body collider: feet alone cannot stop a tip — without this the torso sinks through the floor. -->
+      <geom name="trunk_base_sphere_col" type="sphere" class="collision" size="0.045" pos="-0.02 0 0" contype="1" conaffinity="1" friction="1.2 0.5 0.01" condim="3" />
       <site name="imu" pos="-0.021 6.64098e-05 -0.0146984" group="3" />
       <body name="yaw2roll" pos="0.006 0.0175 -0.005" quat="0 -0.707107 -0.707107 0">
         <inertial pos="-8.8e-11 0.00099414 0.0168917" quat="0.99973 -0.0232487 0 0" mass="0.0230406" diaginertia="4.1964e-06 3.41989e-06 2.32413e-06" />
@@ -105,7 +107,7 @@
                 <inertial pos="-0.00615742 -0.0137483 -0.0156585" quat="0.474723 0.505182 0.517427 0.501696" mass="0.0300246" diaginertia="1.11623e-05 7.7432e-06 5.90334e-06" />
                 <joint name="left_ankle" class="chosen_actuator" range="-1.5708 1.5708" />
                 <site name="left_foot" pos="0 -0.0238146 -0.0140852" quat="0 0 -0.707107 -0.707107" group="3" />
-              <geom name="ankle_left_box_col" type="box" class="collision" size="0.04000 0.02500 0.01500" pos="0 0 -0.01" friction="1.2 0.5 0.01" /></body>
+              <geom name="ankle_left_box_col" type="box" class="collision" size="0.04000 0.02500 0.02800" pos="0 0 -0.02" contype="1" conaffinity="1" condim="3" friction="1.2 0.5 0.01" /></body>
             </body>
           </body>
         </body>
@@ -122,6 +124,7 @@
             <body name="jaw_soft" pos="-0.0179 0 0.0145" quat="0.707107 0 -0.707107 0">
               <inertial pos="0.00460523 0.00120047 -0.0324761" quat="0.999608 0.0201488 -0.0191644 -0.00313932" mass="0.188766" diaginertia="0.000321067 0.000254266 0.000149461" />
               <joint name="head_roll" class="chosen_actuator" range="-0.436332 0.436332" />
+              <geom name="jaw_soft_sphere_col" type="sphere" class="collision" size="0.04" pos="0 0 -0.04" contype="1" conaffinity="1" friction="1 0.5 0.01" condim="3" />
               <site name="head_camera" pos="0.0155 -9.13778e-05 -0.0733" quat="0.707107 0 0.707107 0" group="3" />
               <site name="tof" pos="0.0135 0.0224086 -0.0733" quat="0.707107 0 0.707107 0" group="3" />
               <site name="head_imu" pos="0.0152323 0.000111069 -0.05106" group="3" />
@@ -147,7 +150,7 @@
                 <inertial pos="0.00615539 -0.0137482 -0.0156566" quat="0.517424 0.501653 0.474682 0.505266" mass="0.0300251" diaginertia="1.11622e-05 7.74321e-06 5.90344e-06" />
                 <joint name="right_ankle" class="chosen_actuator" range="-1.5708 1.5708" />
                 <site name="right_foot" pos="0 -0.0238146 -0.0140852" quat="0.707107 -0.707107 0 0" group="3" />
-              <geom name="ankle_right_box_col" type="box" class="collision" size="0.04000 0.02500 0.01500" pos="0 0 -0.01" friction="1.2 0.5 0.01" /></body>
+              <geom name="ankle_right_box_col" type="box" class="collision" size="0.04000 0.02500 0.02800" pos="0 0 -0.02" contype="1" conaffinity="1" condim="3" friction="1.2 0.5 0.01" /></body>
             </body>
           </body>
         </body>
