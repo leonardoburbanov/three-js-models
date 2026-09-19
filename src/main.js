@@ -22,7 +22,7 @@ async function start() {
   const viewport = document.querySelector("#viewport");
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color("#d4d8e0");
+  scene.background = new THREE.Color("#12151c");
 
   const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 100);
 
@@ -75,7 +75,7 @@ async function start() {
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(40, 40),
     new THREE.MeshStandardMaterial({
-      color: "#c5cad3",
+      color: "#1a1f2a",
       roughness: 1,
       metalness: 0
     })
@@ -85,10 +85,10 @@ async function start() {
   floor.receiveShadow = true;
   scene.add(floor);
 
-  const grid = new THREE.GridHelper(8, 16, "#9aa3b0", "#b7bec8");
+  const grid = new THREE.GridHelper(8, 16, "#3a4558", "#252b38");
   grid.position.y = -0.018;
   grid.material.transparent = true;
-  grid.material.opacity = 0.22;
+  grid.material.opacity = 0.35;
   scene.add(grid);
 
   const pickable = [];
